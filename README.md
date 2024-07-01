@@ -6,6 +6,10 @@ Small video diffusion implementation using latest research papers. Built for tes
 
 ## Introduction
 
+This repository contains implementations of different video diffusion models, starting with the seminal paper from Ho. et al. [Video Diffusion Models](https://arxiv.org/abs/2204.03458).
+
+Due to the resource constraints of most models, we have decided to use the [Moving MNIST](https://www.cs.toronto.edu/~nitish/unsupervised_video/) dataset to train on. Moving MNIST is a simple dataset similar to MNIST, of digits which move around the screen. It is an unlabeled dataset, so we do not have access to text labels to determine which digits are moving around the screen, but we will address that deficiency as well. We train at a reduced resolution of `32x32`, due to the resource constraints that most models require. This allows us to train most diffusion models on a T4 instance, which is free to run on [Google Colab](https://colab.research.google.com/). We limit training and sample generation to 16 frames, even though the source dataset contains 20 frames.
+
 ## Requirements
 
 This package built using PyTorch and written in Python 3. To setup an environment to run all of the lessons, we suggest using conda or venv:
