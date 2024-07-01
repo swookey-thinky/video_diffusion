@@ -37,4 +37,4 @@ Sample from the original dataset:
 
 | Date  | Name  | Paper | Config | Results | Details
 | :---- | :---- | ----- | ------ | ----- | -----
-| April 2022 | Video Diffusion Models | [Video Diffusion Models](https://arxiv.org/abs/2204.03458) | | ![Video Diffusion Models](https://drive.google.com/uc?export=view&id=1cvK6auDRfwoAxYb1xVhL_ZhyY70zoRMS) | `100k steps @ batch size 8`
+| April 2022 | Video Diffusion Models | [Video Diffusion Models](https://arxiv.org/abs/2204.03458) | [vdm.yaml](https://github.com/swookey-thinky/video_diffusion/blob/main/configs/moving_mnist/vdm.yaml) | ![Video Diffusion Models](https://drive.google.com/uc?export=view&id=1cvK6auDRfwoAxYb1xVhL_ZhyY70zoRMS) | `100k steps @ batch size 8`
