@@ -39,6 +39,9 @@ Sample from the original dataset:
 
 ![Moving MNIST](https://drive.google.com/uc?export=view&id=1FS9lEd6DPFJ4Ka7hUgqk2BlsJ8FzOdPE)
 
+Make-A-Video: Text-to-Video Generation without Text-Video Data
+
 | Date  | Name  | Paper | Config | Results | Details
 | :---- | :---- | ----- | ------ | ----- | -----
 | April 2022 | Video Diffusion Models | [Video Diffusion Models](https://arxiv.org/abs/2204.03458) | [vdm.yaml](https://github.com/swookey-thinky/video_diffusion/blob/main/configs/moving_mnist/vdm.yaml) | ![Video Diffusion Models](https://drive.google.com/uc?export=view&id=1cvK6auDRfwoAxYb1xVhL_ZhyY70zoRMS) | `100k steps @ batch size 8`
+| September 2022 | Make-A-Video | [Make-A-Video: Text-to-Video Generation without Text-Video Data](https://arxiv.org/abs/2209.14792) |  |  | 
