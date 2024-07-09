@@ -42,4 +42,8 @@ Sample from the original dataset:
 | Date  | Name  | Paper | Config | Results | Details
 | :---- | :---- | ----- | ------ | ----- | -----
 | April 2022 | Video Diffusion Models | [Video Diffusion Models](https://arxiv.org/abs/2204.03458) | [vdm.yaml](https://github.com/swookey-thinky/video_diffusion/blob/main/configs/moving_mnist/vdm.yaml) | ![Video Diffusion Models](https://drive.google.com/uc?export=view&id=1pF6WVY8_dlGudxZIsml3VWPxbUs0ONfa) | `100k steps @ batch size 8`
+| May 2022 | CogVideo | [CogVideo: Large-scale Pretraining for Text-to-Video Generation via Transformers](https://arxiv.org/abs/2205.15868) | | |
 | September 2022 | Make-A-Video | [Make-A-Video: Text-to-Video Generation without Text-Video Data](https://arxiv.org/abs/2209.14792) |  |  | 
+| October 2023 | VideoCrafter 1 | [VideoCrafter1: Open Diffusion Models for High-Quality Video Generation](https://arxiv.org/abs/2310.19512) | | |
+| January 2024 | VideoCrafter 2 | [VideoCrafter2: Overcoming Data Limitations for High-Quality Video Diffusion Models](https://arxiv.org/abs/2401.09047) | | |
+
