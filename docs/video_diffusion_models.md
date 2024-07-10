@@ -37,6 +37,8 @@ To unconditionally sample from a pretrained checkpoint, you can run:
 > python training/moving_mnist/sample.py --config_path configs/moving_mnist/video_diffusion_models.yaml --num_samples 16 --checkpoint output/moving_mnist/video_diffusion_models/diffusion-100000.pt
 ```
 
+Output will be saved to the `output/moving_mnist/sample/video_diffusion_models` directory.
+
 ## Results and Checkpoints
 
 The following results were generated using this [commit hash](), after training on a single T4 instance for 100k steps at batch size 8:
