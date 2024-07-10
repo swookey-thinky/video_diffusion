@@ -71,7 +71,7 @@ Output will be saved to the `output/moving_mnist/sample/make_a_video` directory.
 The text prompts used in the above results were:
 
 ```
-4 and eight, 0 and two,     1 and zero,  8 and zero,     5 and 5,         7 and one, 2 and 2,            three and eight 
+4 and eight, 0 and two,     1 and zero,  8 and zero,     5 and 5,         7 and one,     2 and 2,        three and eight 
 six and 8,   6 and 4,       zero and 2,  5 and nine,     1 and four,      six and 4,     0 and zero,     seven and 9 
 nine and 7,  seven and 0,   1 and seven, 1 and 1,        5 and 2,         3 and two,     four and 4,     9 and 1 
 6 and three, nine and 4,    seven and 8, eight and 5,    4 and eight,     5 and eight,   6 and 0,        6 and seven 
