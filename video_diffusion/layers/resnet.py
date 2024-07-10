@@ -1,10 +1,19 @@
 """Utility layers used in defining a DDPM Unets with Dropout."""
 
+from einops import rearrange
+import numpy as np
 import torch
 from typing import Dict
 
 from video_diffusion.layers.mlp import Mlp
-from video_diffusion.layers.utils import conv_nd, avg_pool_nd, zero_module, ContextBlock
+from video_diffusion.layers.utils import (
+    conv_nd,
+    avg_pool_nd,
+    dirac_module,
+    zero_module,
+    ContextBlock,
+    EinopsToAndFrom,
+)
 
 
 class ResnetBlockDDPM3D(ContextBlock):
@@ -310,3 +319,221 @@ class Upsample(torch.nn.Module):
         if self.use_conv:
             x = self.conv(x)
         return x
+
+
+class ResnetBlockBigGANPseudo3D(ContextBlock):
+    """
+    A residual block that can optionally change the number of channels.
+
+    :param channels: the number of input channels.
+    :param emb_channels: the number of timestep embedding channels.
+    :param dropout: the rate of dropout.
+    :param out_channels: if specified, the number of out channels.
+    :param use_conv: if True and out_channels is specified, use a spatial
+        convolution instead of a smaller 1x1 convolution to change the
+        channels in the skip connection.
+    :param dims: determines if the signal is 1D, 2D, or 3D.
+    :param use_checkpoint: if True, use gradient checkpointing on this module.
+    :param up: if True, use this block for upsampling.
+    :param down: if True, use this block for downsampling.
+    """
+
+    def __init__(
+        self,
+        dim_in,
+        time_emb_dim,
+        dropout,
+        dim_out=None,
+        use_conv=False,
+        use_scale_shift_norm=False,
+        up=False,
+        down=False,
+        **kwargs,
+    ):
+        super().__init__()
+        self.input_channels = dim_in
+        self.emb_channels = time_emb_dim
+        self.dropout = dropout
+        self.out_channels = dim_out or dim_in
+        self.use_conv = use_conv
+
+        # 2D convolutions
+        convolution_dims = 2
+
+        # Scale/shift norm is called Adaptive Group Normalization
+        # in the paper.
+        self.use_scale_shift_norm = use_scale_shift_norm
+
+        # Input to the module comes in as (B, C, F, H, W),
+        # so before applying the initial layers we need to rearrange
+        # to a spatial input of (B*F, C, H, W)
+        self.in_layers = torch.nn.Sequential(
+            torch.nn.GroupNorm(num_groups=32, num_channels=dim_in),
+            torch.nn.SiLU(),
+            # 2D spatial convolution
+            conv_nd(2, dim_in, self.out_channels, 3, padding=1),
+        )
+
+        # 1D temporal convolution
+        self.in_layers_temporal = conv_nd(
+            1, self.out_channels, self.out_channels, 1, padding=0
+        )
+        torch.nn.init.dirac_(self.in_layers_temporal.weight.data)
+        torch.nn.init.zeros_(self.in_layers_temporal.bias.data)
+
+        self.updown = up or down
+
+        if up:
+            self.h_upd = Upsample(dim_in, False, convolution_dims)
+            self.x_upd = Upsample(dim_in, False, convolution_dims)
+        elif down:
+            self.h_upd = Downsample(dim_in, False, convolution_dims)
+            self.x_upd = Downsample(dim_in, False, convolution_dims)
+        else:
+            self.h_upd = self.x_upd = torch.nn.Identity()
+
+        self.emb_layers = torch.nn.Sequential(
+            torch.nn.SiLU(),
+            torch.nn.Linear(
+                time_emb_dim,
+                2 * self.out_channels if use_scale_shift_norm else self.out_channels,
+            ),
+        )
+        self.out_layers = torch.nn.Sequential(
+            torch.nn.GroupNorm(num_groups=32, num_channels=self.out_channels),
+            torch.nn.SiLU(),
+            torch.nn.Dropout(p=dropout),
+            zero_module(
+                conv_nd(
+                    convolution_dims, self.out_channels, self.out_channels, 3, padding=1
+                )
+            ),
+        )
+        self.out_layers_temporal = conv_nd(
+            1, self.out_channels, self.out_channels, 1, padding=0
+        )
+        torch.nn.init.dirac_(self.out_layers_temporal.weight.data)
+        torch.nn.init.zeros_(self.out_layers_temporal.bias.data)
+
+        if self.out_channels == dim_in:
+            self.skip_connection = torch.nn.Identity()
+            self.skip_connection_temporal = torch.nn.Identity()
+        elif use_conv:
+            self.skip_connection = conv_nd(
+                convolution_dims, dim_in, self.out_channels, 3, padding=1
+            )
+            self.skip_connection_temporal = conv_nd(
+                1, self.out_channels, self.out_channels, 1
+            )
+            torch.nn.init.dirac_(self.skip_connection_temporal.weight.data)
+            torch.nn.init.zeros_(self.skip_connection_temporal.bias.data)
+        else:
+            self.skip_connection = conv_nd(
+                convolution_dims, dim_in, self.out_channels, 1
+            )
+            self.skip_connection_temporal = conv_nd(
+                1, self.out_channels, self.out_channels, 1
+            )
+            torch.nn.init.dirac_(self.skip_connection_temporal.weight.data)
+            torch.nn.init.zeros_(self.skip_connection_temporal.bias.data)
+
+    def forward(self, x, context: Dict):
+        """
+        Apply the block to a Tensor, conditioned on a timestep embedding.
+
+        :param x: an [N x C x ...] Tensor of features.
+        :param emb: an [N x emb_channels] Tensor of timestep embeddings.
+        :return: an [N x C x ...] Tensor of outputs.
+        """
+        B, C, F, H, W = x.shape
+
+        # Input comes in as (B, C, F, H, W), so all of
+        # the spatial 2D convolutions will be reshaped to (B*F, C, H, W),
+        # and the 1D temporal convolutions will be reshaped to
+        # (B*H*W, C, F).
+        if self.updown:
+            # First the spatial layers
+            x_spatial = rearrange(x, "b c f h w -> (b f) c h w")
+            in_rest, in_conv = self.in_layers[:-1], self.in_layers[-1]
+            h = in_rest(x_spatial)
+            h = self.h_upd(h)
+            x = self.x_upd(x_spatial)
+            x = rearrange(x, "(b f) c h w -> b c f h w", b=B, f=F)
+            h = in_conv(h)
+
+            # Now the temporal convolution
+            h = rearrange(h, "(b f) c h w -> (b h w) c f", b=B, f=F)
+            h = self.in_layers_temporal(h)
+
+            # Back to the original shape
+            h = rearrange(h, "(b h w) c f -> b c f h w", b=B, f=F)
+        else:
+            # First the spatial layers
+            x_spatial = rearrange(x, "b c f h w -> (b f) c h w")
+            h = self.in_layers(x_spatial)
+
+            # Then the temporal layers
+            h = rearrange(h, "(b f) c h w -> (b h w) c f", b=B, f=F)
+            h = self.in_layers_temporal(h)
+
+            # Back to the original shape
+            h = rearrange(
+                h,
+                "(b h w) c f -> b c f h w",
+                b=B,
+                f=F,
+                h=int(np.sqrt((h.shape[0] // B))),
+                w=int(np.sqrt((h.shape[0] // B))),
+            )
+
+        emb = context["timestep_embedding"]
+        emb_out = self.emb_layers(emb).type(h.dtype)
+        while len(emb_out.shape) < len(h.shape):
+            emb_out = emb_out[..., None]
+
+        # Tile the embeddings to match the spatial batching
+        emb_out = torch.tile(emb_out, (1, 1, h.shape[2], 1, 1))
+
+        # First the spatial output layers
+        h = rearrange(h, "b c f h w -> (b f) c h w")
+        emb_out = rearrange(emb_out, "b c f h w -> (b f) c h w")
+
+        if self.use_scale_shift_norm:
+            out_norm, out_rest = self.out_layers[0], self.out_layers[1:]
+            scale, shift = torch.chunk(emb_out, 2, dim=1)
+            h = out_norm(h) * (1 + scale) + shift
+            h = out_rest(h)
+        else:
+            h = h + emb_out
+            h = self.out_layers(h)
+
+        # Now the temporal output layers
+        h = rearrange(h, "(b f) c h w -> (b h w) c f", b=B, f=F)
+        h = self.out_layers_temporal(h)
+        h = rearrange(
+            h,
+            "(b h w) c f -> b c f h w",
+            b=B,
+            f=F,
+            h=int(np.sqrt((h.shape[0] // B))),
+            w=int(np.sqrt((h.shape[0] // B))),
+        )
+
+        # Apply the skip connection if we have it.
+        # First the spatial skip
+        x_spatial = rearrange(x, "b c f h w -> (b f) c h w")
+        skip_x = self.skip_connection(x_spatial)
+
+        # Now the temporal skip connection
+        skip_x = rearrange(skip_x, "(b f) c h w -> (b h w) c f", b=B, f=F)
+        skip_x = self.skip_connection_temporal(skip_x)
+        skip_x = rearrange(
+            skip_x,
+            "(b h w) c f -> b c f h w",
+            b=B,
+            f=F,
+            h=int(np.sqrt((skip_x.shape[0] // B))),
+            w=int(np.sqrt((skip_x.shape[0] // B))),
+        )
+
+        return skip_x + h
