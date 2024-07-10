@@ -326,3 +326,38 @@ def video_tensor_to_gif(tensor, path, duration=120, loop=0, optimize=True):
         optimize=optimize,
     )
     return images
+
+
+def broadcast_from_left(x, shape):
+    assert len(shape) >= x.ndim
+    return torch.broadcast_to(x.reshape(x.shape + (1,) * (len(shape) - x.ndim)), shape)
+
+
+def log1mexp(x):
+    """Accurate computation of log(1 - exp(-x)) for x > 0."""
+    # From James Townsend's PixelCNN++ code
+    # Method from
+    # https://cran.r-project.org/web/packages/Rmpfr/vignettes/log1mexp-note.pdf
+    return torch.where(
+        x > np.log(2), torch.log1p(-torch.exp(-x)), torch.log(-torch.expm1(-x))
+    )
+
+
+def dynamic_thresholding(x, p=0.995, c=1.7):
+    """
+    Dynamic thresholding, a diffusion sampling technique from Imagen (https://arxiv.org/abs/2205.11487)
+    to leverage high guidance weights and generating more photorealistic and detailed images
+    than previously was possible based on x.clamp(-1, 1) vanilla clipping or static thresholding
+
+    p — percentile determine relative value for clipping threshold for dynamic compression,
+        helps prevent oversaturation recommend values [0.96 — 0.99]
+
+    c — absolute hard clipping of value for clipping threshold for dynamic compression,
+        helps prevent undersaturation and low contrast issues; recommend values [1.5 — 2.]
+    """
+    x_shapes = x.shape
+    s = torch.quantile(x.abs().reshape(x_shapes[0], -1), p, dim=-1)
+    s = torch.clamp(s, min=1, max=c)
+    x_compressed = torch.clip(x.reshape(x_shapes[0], -1).T, -s, s) / s
+    x_compressed = x_compressed.T.reshape(x_shapes)
+    return x_compressed

@@ -7,13 +7,13 @@ import torch
 from torch.utils.data import DataLoader
 from torchvision import utils as torchvision_utils
 from torchvision.transforms import v2
-from torchvision.datasets import MovingMNIST
 from tqdm import tqdm
 from typing import List
 
 from video_diffusion.utils import load_yaml, cycle, DotConfig, video_tensor_to_gif
 from video_diffusion.ddpm import GaussianDiffusion_DDPM
 from video_diffusion.diffusion import DiffusionModel
+from video_diffusion.datasets.moving_mnist import MovingMNIST
 
 OUTPUT_NAME = "output/moving_mnist"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -54,7 +54,6 @@ def train(
                 v2.ToDtype(torch.float32, scale=True),
             ]
         ),
-        download=True,
     )
 
     # Create the dataloader for the MNIST dataset
@@ -133,14 +132,16 @@ def train(
         while step < num_training_steps:
             # The dataset has images and classes. Let's use the classes,
             # and convert them into a fixed embedding space.
-            images = next(dataloader)
-            context = {}
+            images, labels = next(dataloader)
+            context = {"labels": labels}
 
-            # Clip and permute the input. The videos come in as
-            # (B, F, C, H, W) and need to be (B, C, F, H, W).
-            images = images.permute(0, 2, 1, 3, 4)[
-                :, :, : config.data.input_number_of_frames, :, :
-            ]
+            # Convert the labels to text prompts
+            text_prompts = convert_labels_to_prompts(labels)
+            context["text_prompts"] = text_prompts
+
+            # Clip the input to the required number of frames.
+            # Videos come in as (B, C, F, H, W).
+            images = images[:, :, : config.data.input_number_of_frames, :, :]
 
             # Train each cascade in the model using the given data.
             stage_loss = 0
@@ -230,7 +231,7 @@ def train(
                     num_samples=num_samples,
                     sample_with_guidance=sample_with_guidance,
                 )
-                save(diffusion_model, step, loss, optimizers)
+                save(diffusion_model, step, loss, optimizers, config)
                 average_loss = average_loss_cumulative / float(save_and_sample_every_n)
                 average_loss_cumulative = 0.0
 
@@ -248,7 +249,7 @@ def train(
         num_samples=num_samples,
         sample_with_guidance=sample_with_guidance,
     )
-    save(diffusion_model, step, loss, optimizers)
+    save(diffusion_model, step, loss, optimizers, config)
 
 
 def sample(
@@ -283,7 +284,7 @@ def sample(
     else:
         # Sample from the model to check the quality.
         classes = torch.randint(
-            0, config.data.num_classes, size=(num_samples,), device=device
+            0, config.data.num_classes, size=(num_samples, 2), device=device
         )
         prompts = convert_labels_to_prompts(classes)
         context["text_prompts"] = prompts
@@ -356,7 +357,13 @@ def sample(
         )
 
 
-def save(diffusion_model, step, loss, optimizers: List[torch.optim.Optimizer]):
+def save(
+    diffusion_model,
+    step,
+    loss,
+    optimizers: List[torch.optim.Optimizer],
+    config: DotConfig,
+):
     # Save a corresponding model checkpoint.
     torch.save(
         {
@@ -367,6 +374,7 @@ def save(diffusion_model, step, loss, optimizers: List[torch.optim.Optimizer]):
                 optimizer.state_dict() for optimizer in optimizers
             ],
             "loss": loss,
+            "config": config.to_dict(),
         },
         f"{OUTPUT_NAME}/diffusion-{step}.pt",
     )
@@ -396,7 +404,7 @@ def convert_labels_to_prompts(labels: torch.Tensor) -> List[str]:
 
     # First convert the labels into a list of string prompts
     prompts = [
-        text_labels[labels[i]][torch.randint(0, len(text_labels[labels[i]]), size=())]
+        f"{text_labels[labels[i][0]][torch.randint(0, len(text_labels[labels[i][0]]), size=())]} and {text_labels[labels[i][1]][torch.randint(0, len(text_labels[labels[i][1]]), size=())]}"
         for i in range(labels.shape[0])
     ]
     return prompts

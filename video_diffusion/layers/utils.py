@@ -18,10 +18,42 @@ def conv_nd(dims, *args, **kwargs):
     raise ValueError(f"unsupported dimensions: {dims}")
 
 
+def pseudo_conv_nd(dims, *args, **kwargs):
+    """2D convolution followed by a 1D temporal convolution.
+
+    Input is (B, C, F, H, W).
+    """
+    if dims == 3:
+        return torch.nn.Sequential(
+            # 2D convolution over spatial layers
+            EinopsToAndFrom(
+                from_einops="b c f h w",
+                to_einops="(b f) c h w",
+                fn=torch.nn.Conv2d(*args, **kwargs),
+            ),
+            # 1D convolution over temporal dimension
+            EinopsToAndFrom(
+                from_einops="b c f h w",
+                to_einops="(b h w) c f",
+                fn=dirac_module(torch.nn.Conv1d(*args, **kwargs)),
+            ),
+        )
+    else:
+        return conv_nd(dims, args, kwargs)
+
+
 def zero_module(module):
     """Zero out the parameters of a module and return it."""
     for p in module.parameters():
         p.detach().zero_()
+    return module
+
+
+def dirac_module(module):
+    """Dira the parameters of a module and return it."""
+    assert isinstance(module, torch.nn.Conv1d)
+    torch.nn.init.dirac_(module.weight.data)  # initialized to be identity
+    torch.nn.init.zeros_(module.bias.data)
     return module
 
 

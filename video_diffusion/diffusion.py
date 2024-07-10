@@ -1,9 +1,17 @@
 from abc import abstractmethod
+from enum import Enum
 import torch
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Union
 from typing_extensions import Self
 
-from video_diffusion.utils import DotConfig
+from video_diffusion.samplers.base import ReverseProcessSampler
+from image_diffusion.scheduler import NoiseScheduler
+from image_diffusion.utils import DotConfig
+
+
+class PredictionType(Enum):
+    EPSILON = "epsilon"
+    V = "v"
 
 
 class DiffusionModel(torch.nn.Module):
@@ -19,6 +27,7 @@ class DiffusionModel(torch.nn.Module):
         num_samples: int = 16,
         guidance_fn: Optional[Callable] = None,
         classifier_free_guidance: Optional[float] = None,
+        sampler: Optional[ReverseProcessSampler] = None,
     ) -> Tuple[torch.Tensor, Optional[List[torch.Tensor]]]:
         pass
 
@@ -46,4 +55,30 @@ class DiffusionModel(torch.nn.Module):
 
     @abstractmethod
     def config(self) -> DotConfig:
+        pass
+
+    @abstractmethod
+    def process_input(self, x: torch.Tensor, context: Dict) -> torch.Tensor:
+        pass
+
+    @abstractmethod
+    def predict_score(
+        self, x: torch.Tensor, context: Dict
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        pass
+
+    @abstractmethod
+    def is_learned_sigma(self) -> bool:
+        pass
+
+    @abstractmethod
+    def noise_scheduler(self) -> NoiseScheduler:
+        pass
+
+    @abstractmethod
+    def classifier_free_guidance(self) -> float:
+        pass
+
+    @abstractmethod
+    def prediction_type(self) -> PredictionType:
         pass

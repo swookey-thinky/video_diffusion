@@ -161,7 +161,7 @@ class Unet3D(torch.nn.Module):
                     layers.append(
                         EinopsToAndFrom(
                             from_einops="b c f h w",
-                            to_einops="(b h w) f c",
+                            to_einops="(b h w) c f",
                             fn=instantiate_partial_from_config(
                                 config.conditioning.temporal_context_transformer_layer.to_dict()
                             )(in_channels=ch),
@@ -213,7 +213,7 @@ class Unet3D(torch.nn.Module):
             ),
             EinopsToAndFrom(
                 from_einops="b c f h w",
-                to_einops="(b h w) f c",
+                to_einops="(b h w) c f",
                 fn=instantiate_partial_from_config(
                     config.conditioning.temporal_context_transformer_layer.to_dict()
                 )(in_channels=ch),
@@ -262,7 +262,7 @@ class Unet3D(torch.nn.Module):
                     layers.append(
                         EinopsToAndFrom(
                             from_einops="b c f h w",
-                            to_einops="(b h w) f c",
+                            to_einops="(b h w) c f",
                             fn=instantiate_partial_from_config(
                                 config.conditioning.temporal_context_transformer_layer.to_dict()
                             )(in_channels=ch),
