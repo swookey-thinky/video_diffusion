@@ -52,7 +52,7 @@ diffusion:
       params: {}
   # Defines the score network for predicting the noise parameter
   score_network:
-    target: video_diffusion.score_networks.unet_3d.Unet3D
+    target: video_diffusion.score_networks.unet_3d.Unet
     params:
       # The number of input channels to the model.
       input_channels: 1

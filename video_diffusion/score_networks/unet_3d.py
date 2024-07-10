@@ -34,7 +34,7 @@ from video_diffusion.utils import (
 )
 
 
-class Unet3D(torch.nn.Module):
+class Unet(torch.nn.Module):
     """A 3D time-dependent score-based model built upon U-Net architecture."""
 
     def __init__(
