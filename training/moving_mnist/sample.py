@@ -34,9 +34,7 @@ def sample_model(
     num_samples: int,
     guidance: float,
     checkpoint_path: str,
-    sampling_steps: int,
     sampler: str,
-    predict_video_from_frame: bool,
 ):
     global OUTPUT_NAME
     OUTPUT_NAME = f"{OUTPUT_NAME}/{str(Path(config_path).stem)}"
@@ -79,9 +77,7 @@ def sample_model(
         diffusion_model=diffusion_model,
         config=config,
         num_samples=num_samples,
-        num_sampling_steps=sampling_steps,
         sampler=sampler,
-        predict_video_from_frame=predict_video_from_frame,
     )
 
 
@@ -90,8 +86,6 @@ def sample(
     config: DotConfig,
     sampler: base.ReverseProcessSampler,
     num_samples: int = 64,
-    num_sampling_steps: int = 1000,
-    predict_video_from_frame: bool = False,
 ):
     device = next(diffusion_model.parameters()).device
 
@@ -107,60 +101,10 @@ def sample(
     context["text_prompts"] = prompts
     context["classes"] = classes
 
-    initial_noise: Optional[torch.Tensor] = None
-    if predict_video_from_frame:
-        dataset = MovingMNIST(
-            ".",
-            transform=v2.Compose(
-                [
-                    # To the memory requirements, resize the MNIST
-                    # images from (64,64) to (32, 32).
-                    v2.Resize(
-                        size=(config.data.image_size, config.data.image_size),
-                        antialias=True,
-                    ),
-                    # Convert the motion images to (0,1) float range
-                    v2.ToDtype(torch.float32, scale=True),
-                ]
-            ),
-        )
-
-        # Sample a video from the dataset
-        video, label = dataset[torch.randint(0, len(dataset), size=())]
-
-        # Save the first frame
-        utils.save_image(
-            video[:, 0, :, :],
-            str(f"{OUTPUT_NAME}/first_frame_conditioning.png"),
-        )
-
-        # Save the samples into an image grid
-        video_tensor_to_gif(
-            video[None, ...],
-            str(f"{OUTPUT_NAME}/sample_conditioning.gif"),
-        )
-
-        # Noise the conditioning tensor
-        video = torch.tile(video[None, ...], (num_samples, 1, 1, 1, 1))
-        epsilon = torch.randn_like(video)
-        x_0 = normalize_to_neg_one_to_one(video)
-        x_t = diffusion_model.noise_scheduler().q_sample(
-            x_start=x_0, t=torch.ones(size=(video.shape[0],)), noise=epsilon
-        )
-        x_t[:, :, 1:, :, :] = epsilon[:, :, 1:, :, :]
-        assert (x_t[:, :, 0, :, :] == video[:, :, 0, :, :]).all()
-        assert (x_t[:, :, 1:, :, :] == epsilon[:, :, 1:, :, :]).all()
-
-        # x_t now conditions the noised first frame, and random noise
-        # for the rest of the frames.
-        initial_noise = x_t
-
     samples, intermediate_stage_output = diffusion_model.sample(
         num_samples=num_samples,
         context=context,
-        num_sampling_steps=num_sampling_steps,
         sampler=sampler,
-        initial_noise=initial_noise,
     )
 
     # Save the first frame
@@ -223,9 +167,7 @@ def main(override=None):
     parser.add_argument("--config_path", type=str, required=True)
     parser.add_argument("--guidance", type=float, default=1.0)
     parser.add_argument("--checkpoint", type=str, default="")
-    parser.add_argument("--sampling_steps", type=int, default=1000)
     parser.add_argument("--sampler", type=str, default="ancestral")
-    parser.add_argument("--predict_video_from_frame", action="store_true")
     args = parser.parse_args()
 
     sample_model(
@@ -233,9 +175,7 @@ def main(override=None):
         num_samples=args.num_samples,
         guidance=args.guidance,
         checkpoint_path=args.checkpoint,
-        sampling_steps=args.sampling_steps,
         sampler=args.sampler,
-        predict_video_from_frame=args.predict_video_from_frame,
     )
 
 
