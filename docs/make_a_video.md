@@ -85,7 +85,16 @@ six and two, 8 and four,    7 and six,   1 and 3,        3 and 7,         zero a
 
 | Config | Checkpoint | Results
 | ------ | ---------- | -------
-| [config](https://github.com/swookey-thinky/video_diffusion/blob/main/configs/moving_mnist/make_a_video.yaml) | [google drive]() | ![Make-A-Video]()
+| [config](https://github.com/swookey-thinky/video_diffusion/blob/main/configs/moving_mnist/make_a_video.yaml) | [google drive]() | ![Make-A-Video](![DDPM](https://drive.google.com/uc?export=view&id=1dm4H7lsliib4KW-4T4DJeiFLRi2Ph2JD))
+
+The text prompts used in the above results were:
+
+```
+1 and 3,       6 and two, 1 and six,     9 and 5 
+two and 5,     5 and 2,   1 and three,   six and 9 
+9 and 0,       2 and two, two and 9,     two and five 
+two and seven, 1 and 0,   six and seven, 5 and four 
+```
 
 ## Other Resources
 
