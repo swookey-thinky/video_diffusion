@@ -85,7 +85,7 @@ six and two, 8 and four,    7 and six,   1 and 3,        3 and 7,         zero a
 
 | Config | Checkpoint | Results
 | ------ | ---------- | -------
-| [config](https://github.com/swookey-thinky/video_diffusion/blob/main/configs/moving_mnist/make_a_video.yaml) | [google drive]() | ![Make-A-Video](![DDPM](https://drive.google.com/uc?export=view&id=1dm4H7lsliib4KW-4T4DJeiFLRi2Ph2JD))
+| [config](https://github.com/swookey-thinky/video_diffusion/blob/main/configs/moving_mnist/make_a_video.yaml) | [google drive]() | ![Make-A-Video](https://drive.google.com/uc?export=view&id=1dm4H7lsliib4KW-4T4DJeiFLRi2Ph2JD)
 
 The text prompts used in the above results were:
 
