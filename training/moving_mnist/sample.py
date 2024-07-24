@@ -163,7 +163,7 @@ def main(override=None):
     Main entrypoint for the standalone version of this package.
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument("--num_samples", type=int, default=64)
+    parser.add_argument("--num_samples", type=int, default=8)
     parser.add_argument("--config_path", type=str, required=True)
     parser.add_argument("--guidance", type=float, default=1.0)
     parser.add_argument("--checkpoint", type=str, default="")
