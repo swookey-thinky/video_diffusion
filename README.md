@@ -43,7 +43,7 @@ Sample from the original dataset:
 | :---- | :---- | ----- | ------ | ----- | -----
 | April 2022 | Video Diffusion Models | [Video Diffusion Models](https://arxiv.org/abs/2204.03458) | [config](https://github.com/swookey-thinky/video_diffusion/blob/main/configs/moving_mnist/video_diffusion_models.yaml) | ![Video Diffusion Models](https://drive.google.com/uc?export=view&id=1pF6WVY8_dlGudxZIsml3VWPxbUs0ONfa) | [instructions](https://github.com/swookey-thinky/video_diffusion/blob/main/docs/video_diffusion_models.md)
 | May 2022 | CogVideo | [CogVideo: Large-scale Pretraining for Text-to-Video Generation via Transformers](https://arxiv.org/abs/2205.15868) | | |
-| September 2022 | Make-A-Video | [Make-A-Video: Text-to-Video Generation without Text-Video Data](https://arxiv.org/abs/2209.14792) | [config](https://github.com/swookey-thinky/video_diffusion/blob/main/configs/moving_mnist/make_a_video.yaml) |  | 
+| September 2022 | Make-A-Video | [Make-A-Video: Text-to-Video Generation without Text-Video Data](https://arxiv.org/abs/2209.14792) | [config](https://github.com/swookey-thinky/video_diffusion/blob/main/configs/moving_mnist/make_a_video.yaml) |  ![Video Diffusion Models](https://drive.google.com/uc?export=view&id=1dm4H7lsliib4KW-4T4DJeiFLRi2Ph2JD) | [instructions](https://github.com/swookey-thinky/video_diffusion/blob/main/docs/make_a_video.md)
 | October 2022 | Imagen Video | [Imagen Video: High Definition Video Generation with Diffusion Models](https://arxiv.org/abs/2210.02303) | | |
 | October 2022 | Phenaki | [Phenaki: Variable Length Video Generation From Open Domain Textual Description](https://arxiv.org/abs/2210.02399) | | |
 | December 2022 | Tune-A-Video  | [Tune-A-Video: One-Shot Tuning of Image Diffusion Models for Text-to-Video Generation](https://arxiv.org/abs/2212.11565) | | |
@@ -65,6 +65,7 @@ Sample from the original dataset:
 | January 2024 | Latte | [Latte: Latent Diffusion Transformer for Video Generation](https://arxiv.org/abs/2401.03048) | | |
 | January 2024 | VideoCrafter 2 | [VideoCrafter2: Overcoming Data Limitations for High-Quality Video Diffusion Models](https://arxiv.org/abs/2401.09047) | | |
 | January 2024 | Lumiere | [Lumiere: A Space-Time Diffusion Model for Video Generation](https://arxiv.org/abs/2401.12945) | | |
+| February 2024 | AnimateLCM | [AnimateLCM: Accelerating the Animation of Personalized Diffusion Models and Adapters with Decoupled Consistency Learning](https://arxiv.org/abs/2402.00769) | | |
 | February 2024 | Video-LaVIT | [Video-LaVIT: Unified Video-Language Pre-training with Decoupled Visual-Motional Tokenization](https://arxiv.org/abs/2402.03161) | | |
 | February 2024 | Snap Video | [Snap Video: Scaled Spatiotemporal Transformers for Text-to-Video Synthesis](https://arxiv.org/abs/2402.14797) | | |
 | April 2024 | TI2V-Zero | [TI2V-Zero: Zero-Shot Image Conditioning for Text-to-Video Diffusion Models](https://arxiv.org/abs/2404.16306) | | |
