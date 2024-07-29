@@ -1,18 +1,7 @@
-"""Defines the noise prediction U-Net.
+"""Noise prediction UNet using Pseudo-3D convolutions and attentions.
 
-U-Net espilon prediction network from the paper "Denoising Diffusion Probabilistic Models"
-(https://arxiv.org/abs/2006.11239).
-
-This package has the following improvements over the original implementation:
-
-This package adds the score network improvements from GLIDE. Namely, the model is trained
-with classifier free guidance, and it uses a text conditioning scheme very similar to
-Latent Diffusion. The difference is that Latent Diffusion uses a transformer+cross attention
-projection at each UNet layer, while GLIDE uses a single transformer block, and only cross attention
-at each layer.
-
-This package augments the GLIDE text conditioning with the text and image conditioning
-from DaLL*E 2.
+The score network implements the Pseudo3D convolutional and attention network
+from Make-A-Video (https://arxiv.org/abs/2209.14792).
 """
 
 from einops import rearrange

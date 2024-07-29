@@ -3,14 +3,14 @@
 import torch
 from typing import Dict, List, Optional, Tuple
 
-from image_diffusion.diffusion import PredictionType, DiffusionModel
-from image_diffusion.samplers.base import ReverseProcessSampler
-from image_diffusion.utils import dynamic_thresholding, broadcast_from_left
+from video_diffusion.diffusion import PredictionType, DiffusionModel
+from video_diffusion.samplers.base import ReverseProcessSampler
+from video_diffusion.utils import dynamic_thresholding, broadcast_from_left
 
 
 class AncestralSampler(ReverseProcessSampler):
     def __init__(
-        self, reconstruction_guidance: bool = False, omega: float = 0.0, **kwargs
+        self, reconstruction_guidance: bool = False, omega: float = 2.0, **kwargs
     ):
         super().__init__()
 
@@ -26,6 +26,7 @@ class AncestralSampler(ReverseProcessSampler):
         diffusion_model: DiffusionModel,
         guidance_fn=None,
         classifier_free_guidance: Optional[float] = None,
+        clip_denoised: bool = True,
     ):
         """Reverse process single step.
 
@@ -70,15 +71,6 @@ class AncestralSampler(ReverseProcessSampler):
             model_mean + torch.exp(0.5 * model_log_variance) * noise,
         )
 
-        if "reconstruction_update" in context:
-            x_hat_a_mean, _, logvar_a, x_hat_a = context["reconstruction_update"]
-            del context["reconstruction_update"]
-
-            context["z_a_t"] = torch.where(
-                torch.tensor(timestep_idx == 0),
-                x_hat_a,
-                x_hat_a_mean + torch.exp(0.5 * logvar_a) * noise,
-            )
         return pred_img
 
     def p_mean_variance(
@@ -113,48 +105,49 @@ class AncestralSampler(ReverseProcessSampler):
                 variance: Tensor batch of the reverse distribution variance.
                 log_variance: Tensor batch of the log of the reverse distribution variance.
         """
-        B, C = x.shape[:2]
+        B, C, F, H, W = x.shape
 
         assert context["timestep"].shape == (B,)
-
-        x_hat, variance, log_variance = self._pred_x_hat(
-            z_t=x,
-            context=context,
-            unconditional_context=unconditional_context,
-            diffusion_model=diffusion_model,
-            epsilon_v_param=epsilon_v_param,
-            classifier_free_guidance=classifier_free_guidance,
-            clip_denoised=clip_denoised,
-        )
 
         # Add reconstruction guidance if requested. Reconstruction guidance
         # comes from Section 3.1 of "Video Diffusion Models" (https://arxiv.org/abs/2204.03458).
         # We follow Eq. (7) here, and update x_tilde_theta^b (which corresponds to
         # pred_x_start) with the second term in Eq. (7).
         if self._reconstruction_guidance and "x_a" in context:
-            z_b_t = x
+            assert diffusion_model.noise_scheduler().continuous()
             x_a = context["x_a"]
+            z_b_t = x
+            t = context["timestep"]
 
-            if "z_a_t" not in context:
-                # Haven't noised the initial sample yet
-                context["z_a_t"] = diffusion_model.noise_scheduler().q_sample(
-                    x_start=x_a,
-                    t=torch.ones(size=(x_a.shape[0],)),
-                )
-            else:
-                z_a_t = context["z_a_t"]
+            # The number of overlapping frames in z_b and z_a. Remember
+            # we only have 16 frames to play with, and if z_t = [z_a_t, z_b_t],
+            # we need to fit both the latent frames (z_b_t) and the conditioning
+            # frames (z_a_t) into the same frame size.
+            num_frame_overlap = context["num_frame_overlap"]
 
-            logsnr_t = broadcast_from_left(context["logsnr_t"], z_a_t.shape)
-            alpha_t = torch.sqrt(torch.nn.functional.sigmoid(logsnr_t))
-
-            # Calculate x_hat_a
             with torch.enable_grad():
                 x_a = x_a.detach().requires_grad_(True)
-                z_a_t = z_a_t.detach().requires_grad_(True)
                 z_b_t = z_b_t.detach().requires_grad_(True)
+                t = t.detach().requires_grad_(True)
 
-                x_hat_a, variance_a, log_variance_a = self._pred_x_hat(
-                    z_t=z_a_t,
+                z_a_t = diffusion_model.noise_scheduler().q_sample(
+                    x_start=x_a,
+                    t=t,
+                )
+
+                # z_t = [z_a_t, z_b_t] => Take the last N frames
+                # from z_a_t and the last (max_frames - N) of z_b_t
+                z_t = torch.cat(
+                    [
+                        z_a_t[:, :, -num_frame_overlap:, :, :],
+                        z_b_t[:, :, num_frame_overlap:, :, :],
+                    ],
+                    dim=2,
+                )
+                assert z_t.shape == x.shape
+
+                x_hat_ab, variance, log_variance = self._pred_x_hat(
+                    z_t=z_t,
                     context=context,
                     unconditional_context=unconditional_context,
                     diffusion_model=diffusion_model,
@@ -162,24 +155,35 @@ class AncestralSampler(ReverseProcessSampler):
                     classifier_free_guidance=classifier_free_guidance,
                     clip_denoised=clip_denoised,
                 )
-                guidance = torch.square(x_a - x_hat_a)
+
+                logsnr_t = broadcast_from_left(context["logsnr_t"], z_a_t.shape)
+                alpha_t = torch.sqrt(torch.nn.functional.sigmoid(logsnr_t))
+
+                # Calculate the guidance on just the x_a part (the last N frames) of
+                # x_hat_ab
+                guidance = torch.square(
+                    x_a[:, :, -num_frame_overlap:, :, :]
+                    - x_hat_ab[:, :, -num_frame_overlap:, :, :]
+                ).mean()
                 guidance_factor = (
                     self._reconstruction_omega * alpha_t * 0.5
-                ) * torch.autograd.grad(guidance, z_b_t)
+                ) * torch.autograd.grad(guidance, z_b_t)[0]
 
-            # Update x_hat with the guidance factor
-            x_hat = x_hat - guidance_factor.detach()
-
-            # Set parameters to update the reconstruction in the next step
-            assert "reconstruction_update" not in context
-            x_hat_a_mean, _, _ = diffusion_model.noise_scheduler().q_posterior(
-                x_start=x_hat_a.detach(), x_t=z_a_t.detach(), context=context
+            # Update x_hat_b with the guidance factor
+            x_tilde_b = (
+                x_hat_ab[:, :, num_frame_overlap:, :, :]
+                - guidance_factor.detach()[:, :, num_frame_overlap:, :, :]
             )
-            context["reconstruction_update"] = (
-                x_hat_a_mean,
-                variance_a,
-                log_variance_a,
-                x_hat_a.detach(),
+            x_hat = torch.cat([x_a[:, :, -num_frame_overlap:, :, :], x_tilde_b], dim=2)
+        else:
+            x_hat, variance, log_variance = self._pred_x_hat(
+                z_t=x,
+                context=context,
+                unconditional_context=unconditional_context,
+                diffusion_model=diffusion_model,
+                epsilon_v_param=epsilon_v_param,
+                classifier_free_guidance=classifier_free_guidance,
+                clip_denoised=clip_denoised,
             )
 
         # Set the mean of the reverse process equal to the mean of the forward process
@@ -248,7 +252,7 @@ class AncestralSampler(ReverseProcessSampler):
                 z=z_t, context=context, v=epsilon_theta
             )
         else:
-            raise NotImplemented(
+            raise NotImplementedError(
                 f"Prediction type {diffusion_model.prediction_type()} is not implemented."
             )
 

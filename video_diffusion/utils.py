@@ -51,7 +51,7 @@ def normalize_to_neg_one_to_one(img):
 
 def unnormalize_to_zero_to_one(t):
     """Converts tensors from (-1,1) to (0,1)."""
-    return (t + 1) * 0.5
+    return (torch.clamp(t, -1.0, 1.0) + 1) * 0.5
 
 
 def extract(a, t, x_shape):

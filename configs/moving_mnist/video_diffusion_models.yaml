@@ -11,7 +11,9 @@ diffusion:
     output_spatial_size: 32
     output_frames: 16
     target: video_diffusion.samplers.ancestral.AncestralSampler
-    params: {}
+    params:
+      reconstruction_guidance: True
+
   # The noise scheduler to use with the forward diffusion process.
   noise_scheduler:
     target: video_diffusion.scheduler.ContinuousNoiseScheduler

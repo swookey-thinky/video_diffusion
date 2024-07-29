@@ -13,6 +13,11 @@ from video_diffusion.utils import extract, broadcast_from_left, log1mexp
 
 
 def cosine_logsnr_schedule(num_scales, logsnr_min, logsnr_max):
+    """Cosine logSNR schedule, with t=0 => logsnr_max, t=1 => logsnr_min.
+
+    From Section 2 of https://arxiv.org/abs/2202.00512,
+    "the log signal-to-noise-ratio, decreases monotonically with t"
+    """
     b = np.arctan(np.exp(-0.5 * logsnr_max))
     a = np.arctan(np.exp(-0.5 * logsnr_min)) - b
     t = torch.linspace(0, 1, num_scales, dtype=torch.float32)
@@ -92,7 +97,7 @@ class NoiseScheduler(torch.nn.Module):
         pass
 
     @abstractmethod
-    def predict_v_from_x_and_epsilon(self, x, epsilon, t) -> torch.Tensor:
+    def predict_v_from_x_and_epsilon(self, x, epsilon, t, context) -> torch.Tensor:
         pass
 
     @abstractmethod
@@ -306,7 +311,7 @@ class DiscreteNoiseScheduler(NoiseScheduler):
         x_hat = alpha_t * z - sigma_t * v
         return x_hat
 
-    def predict_v_from_x_and_epsilon(self, x, epsilon, t) -> torch.Tensor:
+    def predict_v_from_x_and_epsilon(self, x, epsilon, t, context) -> torch.Tensor:
         alpha_t = extract(self.sqrt_alphas_cumprod, t, x.shape)
         sigma_t = extract(self.sqrt_one_minus_alphas_cumprod, t, x.shape)
         return alpha_t * epsilon - sigma_t * x
@@ -424,6 +429,10 @@ class ContinuousNoiseScheduler(NoiseScheduler):
         x_hat = x_start
         z_t = x_t
 
+        # From section 2 equation (1) of https://arxiv.org/abs/2202.00512,
+        # s < t => logsnr_s > logsnr_t,
+        # "the log signal-to-noise-ratio, decreases monotonically with t."
+        # with 0 < s < t < 1.
         logsnr_s = broadcast_from_left(context["logsnr_s"], z_t.shape)
         logsnr_t = broadcast_from_left(context["logsnr_t"], z_t.shape)
         assert torch.all(logsnr_s > logsnr_t)
@@ -479,11 +488,14 @@ class ContinuousNoiseScheduler(NoiseScheduler):
         if noise is None:
             noise = torch.randn_like(x_start)
 
-        t_idx = (t * self.num_timesteps).to(torch.long)
-        return (
-            extract(self.alphas, t_idx, x_start.shape) * x_start
-            + extract(self.sqrt_sigma2, t_idx, x_start.shape) * noise
+        alpha = broadcast_from_left(
+            torch.sqrt(torch.nn.functional.sigmoid(self.logsnr(t))), shape=x_start.shape
         )
+        stdev = broadcast_from_left(
+            torch.sqrt(torch.nn.functional.sigmoid(-self.logsnr(t))), shape=noise.shape
+        )
+
+        return alpha * x_start + stdev * noise
 
     def logsnr(self, t):
         t_idx = torch.clamp(
@@ -513,10 +525,14 @@ class ContinuousNoiseScheduler(NoiseScheduler):
         x_hat = alpha_t * z - sigma_t * v
         return x_hat
 
-    def predict_v_from_x_and_epsilon(self, x, epsilon, t) -> torch.Tensor:
-        t_idx = (t * self.num_timesteps).to(torch.long)
-        alpha_t = extract(self.alphas, t_idx, x.shape)
-        sigma_t = extract(self.sqrt_sigma2, t_idx, x.shape)
+    def predict_v_from_x_and_epsilon(self, x, epsilon, t, context) -> torch.Tensor:
+        logsnr_t = broadcast_from_left(context["logsnr_t"], x.shape)
+        alpha_t = torch.sqrt(torch.nn.functional.sigmoid(logsnr_t))
+        sigma_t = torch.sqrt(torch.nn.functional.sigmoid(-logsnr_t))
+
+        # t_idx = (t * self.num_timesteps).to(torch.long)
+        # alpha_t = extract(self.alphas, t_idx, x.shape)
+        # sigma_t = extract(self.sqrt_sigma2, t_idx, x.shape)
         return alpha_t * epsilon - sigma_t * x
 
     def predict_epsilon_from_x(self, z, x, context) -> torch.Tensor:

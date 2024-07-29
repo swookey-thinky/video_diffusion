@@ -1,18 +1,7 @@
-"""Defines the noise prediction U-Net.
+"""Defines a 3D Unet for spatio-temporal noise prediction.
 
-U-Net espilon prediction network from the paper "Denoising Diffusion Probabilistic Models"
-(https://arxiv.org/abs/2006.11239).
-
-This package has the following improvements over the original implementation:
-
-This package adds the score network improvements from GLIDE. Namely, the model is trained
-with classifier free guidance, and it uses a text conditioning scheme very similar to
-Latent Diffusion. The difference is that Latent Diffusion uses a transformer+cross attention
-projection at each UNet layer, while GLIDE uses a single transformer block, and only cross attention
-at each layer.
-
-This package augments the GLIDE text conditioning with the text and image conditioning
-from DaLL*E 2.
+This package implements the 3D UNet from "Video Diffusion Models"
+(https://arxiv.org/abs/2204.03458).
 """
 
 from einops.layers.torch import Rearrange

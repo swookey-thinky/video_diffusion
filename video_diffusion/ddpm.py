@@ -206,7 +206,7 @@ class GaussianDiffusion_DDPM(DiffusionModel):
             prediction_target = epsilon
         elif self._prediction_type == PredictionType.V:
             prediction_target = self._noise_scheduler.predict_v_from_x_and_epsilon(
-                x=x_0, epsilon=epsilon, t=t
+                x=x_0, epsilon=epsilon, t=t, context=context
             )
         else:
             raise NotImplemented(
@@ -421,7 +421,7 @@ class GaussianDiffusion_DDPM(DiffusionModel):
             z=z_t, x=x_target, context=context
         )
         v_target = self._noise_scheduler.predict_v_from_x_and_epsilon(
-            x=x_target, epsilon=eps_target, t=t
+            x=x_target, epsilon=eps_target, t=t, context=context
         )
 
         # denoising loss
@@ -516,7 +516,7 @@ class GaussianDiffusion_DDPM(DiffusionModel):
             else self._noise_scheduler.steps()
         )
 
-        latent_samples = self._p_sample_loop(
+        latent_samples, intermediate_outputs = self._p_sample_loop(
             shape,
             context=context,
             unconditional_context=unconditional_context,
@@ -531,7 +531,7 @@ class GaussianDiffusion_DDPM(DiffusionModel):
         # Decode the samples from the latent space
         samples = unnormalize_to_zero_to_one(latents)
         self.train()
-        return samples, None
+        return samples, intermediate_outputs
 
     def get_classifier_guidance(
         self, classifier: torch.nn.Module, classifier_scale: float
@@ -688,6 +688,7 @@ class GaussianDiffusion_DDPM(DiffusionModel):
         classifier_free_guidance: Optional[float] = None,
         sampler: Optional[ReverseProcessSampler] = None,
         initial_noise: Optional[torch.Tensor] = None,
+        save_intermediate_outputs: bool = False,
     ):
         """Defines Algorithm 2 sampling using notation from DDPM implementation.
 
@@ -718,6 +719,11 @@ class GaussianDiffusion_DDPM(DiffusionModel):
             else initial_noise
         )
 
+        intermediate_outputs = []
+
+        if save_intermediate_outputs:
+            intermediate_outputs.append(unnormalize_to_zero_to_one(x_t))
+
         sampler = sampler if sampler is not None else self._reverse_process_sampler
         for timestep_idx in tqdm(
             reversed(range(0, num_sampling_steps)),
@@ -735,26 +741,28 @@ class GaussianDiffusion_DDPM(DiffusionModel):
                 unconditional_context_for_timestep = None
 
             t = torch.tensor([timestep_idx] * shape[0], device=device)
+            context_for_timestep["timestep_idx"] = timestep_idx
+
             if self._noise_scheduler.continuous():
-                context_for_timestep["timestep_idx"] = timestep_idx
                 context_for_timestep["logsnr_s"] = self._noise_scheduler.logsnr(
-                    t / num_sampling_steps
+                    t / self._noise_scheduler.steps()
                 )
 
                 t_plus_1 = t + 1
                 context_for_timestep["logsnr_t"] = self._noise_scheduler.logsnr(
-                    t_plus_1 / num_sampling_steps
+                    t_plus_1 / self._noise_scheduler.steps()
                 )
-
                 if unconditional_context_for_timestep is not None:
                     unconditional_context_for_timestep["timestep_idx"] = timestep_idx
                     unconditional_context_for_timestep["logsnr_s"] = (
-                        self._noise_scheduler.logsnr(t / num_sampling_steps)
+                        self._noise_scheduler.logsnr(t / self._noise_scheduler.steps())
                     )
                     unconditional_context_for_timestep["logsnr_t"] = (
-                        self._noise_scheduler.logsnr(t_plus_1 / num_sampling_steps)
+                        self._noise_scheduler.logsnr(
+                            t_plus_1 / self._noise_scheduler.steps()
+                        )
                     )
-                t = t / num_sampling_steps
+                t = t / self._noise_scheduler.steps()
             context_for_timestep["timestep"] = t
 
             if unconditional_context_for_timestep is not None:
@@ -770,4 +778,7 @@ class GaussianDiffusion_DDPM(DiffusionModel):
             )
             x_t = x_t_minus_1
 
-        return x_t
+            if save_intermediate_outputs:
+                intermediate_outputs.append(unnormalize_to_zero_to_one(x_t))
+
+        return x_t, intermediate_outputs
