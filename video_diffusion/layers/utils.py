@@ -3,6 +3,7 @@ import collections.abc
 from einops import rearrange
 from enum import Enum
 from itertools import repeat
+import math
 import numpy as np
 import torch
 
@@ -66,6 +67,51 @@ def avg_pool_nd(dims, *args, **kwargs):
     elif dims == 3:
         return torch.nn.AvgPool3d(*args, **kwargs)
     raise ValueError(f"unsupported dimensions: {dims}")
+
+
+def linear(*args, **kwargs):
+    """
+    Create a linear module.
+    """
+    return torch.nn.Linear(*args, **kwargs)
+
+
+def normalization(channels):
+    """
+    Make a standard normalization layer.
+
+    :param channels: number of input channels.
+    :return: an nn.Module for normalization.
+    """
+    return GroupNorm32(32, channels)
+
+
+def timestep_embedding(timesteps, dim, max_period=10000):
+    """
+    Create sinusoidal timestep embeddings.
+
+    :param timesteps: a 1-D Tensor of N indices, one per batch element.
+                      These may be fractional.
+    :param dim: the dimension of the output.
+    :param max_period: controls the minimum frequency of the embeddings.
+    :return: an [N x dim] Tensor of positional embeddings.
+    """
+    half = dim // 2
+    freqs = torch.exp(
+        -math.log(max_period)
+        * torch.arange(start=0, end=half, dtype=torch.float32)
+        / half
+    ).to(device=timesteps.device)
+    args = timesteps[:, None].float() * freqs[None]
+    embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
+    if dim % 2:
+        embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
+    return embedding
+
+
+class GroupNorm32(torch.nn.GroupNorm):
+    def forward(self, x):
+        return super().forward(x.float()).type(x.dtype)
 
 
 class ContextBlock(torch.nn.Module):

@@ -10,10 +10,17 @@ from torchvision.transforms import v2
 from tqdm import tqdm
 from typing import List
 
-from video_diffusion.utils import load_yaml, cycle, DotConfig, video_tensor_to_gif
+from video_diffusion.utils import (
+    load_yaml,
+    cycle,
+    DotConfig,
+    video_tensor_to_gif,
+    normalize_to_neg_one_to_one,
+)
 from video_diffusion.ddpm import GaussianDiffusion_DDPM
 from video_diffusion.diffusion import DiffusionModel
 from video_diffusion.datasets.moving_mnist import MovingMNIST
+from video_diffusion.training_utils import sample_masks_for_training_batch
 
 OUTPUT_NAME = "output/moving_mnist"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -45,12 +52,12 @@ def train(
         transform=v2.Compose(
             [
                 # To the memory requirements, resize the MNIST
-                # images from (64,64) to (32, 32).
+                # videos from (64,64) to (32, 32).
                 v2.Resize(
                     size=(config.data.image_size, config.data.image_size),
                     antialias=True,
                 ),
-                # Convert the motion images to (0,1) float range
+                # Convert the motion videos to (0,1) float range
                 v2.ToDtype(torch.float32, scale=True),
             ]
         ),
@@ -130,19 +137,36 @@ def train(
     with tqdm(initial=step, total=num_training_steps) as progress_bar:
         # Perform gradient descent for the given number of training steps.
         while step < num_training_steps:
-            # The dataset has images and classes. Let's use the classes,
+            # The dataset has videos and classes. Let's use the classes,
             # and convert them into a fixed embedding space.
-            images, labels = next(dataloader)
+            videos, labels = next(dataloader)
             context = {"labels": labels}
 
             # Convert the labels to text prompts
             text_prompts = convert_labels_to_prompts(labels)
             context["text_prompts"] = text_prompts
 
-            # Clip the input to the required number of frames.
-            # Videos come in as (B, C, F, H, W).
-            images = images[:, :, : config.data.input_number_of_frames, :, :]
-
+            if (
+                "training" in config
+                and "flexible_diffusion_modeling" in config.training
+                and config.training.flexible_diffusion_modeling
+            ):
+                B, C, F, H, W = videos.shape
+                videos, frame_indices, observed_mask, latent_mask = (
+                    sample_masks_for_training_batch(
+                        video_batch=videos,
+                        max_frames=config.data.input_number_of_frames,
+                        method=config.training.flexible_diffusion_modeling_method,
+                    )
+                )
+                context["x0"] = normalize_to_neg_one_to_one(videos)
+                context["frame_indices"] = frame_indices
+                context["observed_mask"] = observed_mask
+                context["latent_mask"] = latent_mask
+            else:
+                # Clip the input to the required number of frames.
+                # Videos come in as (B, C, F, H, W).
+                videos = videos[:, :, : config.data.input_number_of_frames, :, :]
             # Train each cascade in the model using the given data.
             stage_loss = 0
             for model_for_layer, optimizer_for_layer, schedule_for_layer in zip(
@@ -152,15 +176,15 @@ def train(
                 # the low resolution imagery as conditioning.
                 config_for_layer = model_for_layer.config()
                 context_for_layer = context.copy()
-                images_for_layer = images
+                videos_for_layer = videos
 
                 if "super_resolution" in config_for_layer:
                     # First create the low resolution context.
                     low_resolution_spatial_size = (
                         config_for_layer.super_resolution.low_resolution_spatial_size
                     )
-                    low_resolution_images = v2.functional.resize(
-                        images,
+                    low_resolution_videos = v2.functional.resize(
+                        videos,
                         size=(
                             low_resolution_spatial_size,
                             low_resolution_spatial_size,
@@ -169,17 +193,17 @@ def train(
                     )
                     context_for_layer[
                         config_for_layer.super_resolution.conditioning_key
-                    ] = low_resolution_images
+                    ] = low_resolution_videos
 
-                # If the images are not the right shape for the model input, then
+                # If the videos are not the right shape for the model input, then
                 # we need to resize them too. This could happen if we are the intermediate
                 # super resolution layers of a multi-layer cascade.
                 model_input_spatial_size = config_for_layer.data.image_size
 
-                B, C, F, H, W = images.shape
+                B, C, F, H, W = videos.shape
                 if H != model_input_spatial_size or W != model_input_spatial_size:
-                    images_for_layer = v2.functional.resize(
-                        images,
+                    videos_for_layer = v2.functional.resize(
+                        videos,
                         size=(
                             model_input_spatial_size,
                             model_input_spatial_size,
@@ -189,7 +213,7 @@ def train(
 
                 # Calculate the loss on the batch of training data.
                 loss_dict = model_for_layer.loss_on_batch(
-                    images=images_for_layer, context=context_for_layer
+                    images=videos_for_layer, context=context_for_layer
                 )
                 loss = loss_dict["loss"]
 
@@ -317,6 +341,29 @@ def sample(
                     )
 
     else:
+        # Add the flexible diffusion modeling context
+        B, C, F, H, W = (
+            num_samples,
+            config.data.num_channels,
+            config.data.input_number_of_frames,
+            config.data.image_size,
+            config.data.image_size,
+        )
+
+        context["x0"] = normalize_to_neg_one_to_one(
+            torch.zeros(size=(B, C, F, H, W), dtype=torch.float32, device=device)
+        )
+        context["frame_indices"] = torch.tile(
+            torch.arange(end=F, device=device)[None, ...],
+            (B, 1),
+        )
+        context["observed_mask"] = torch.zeros(
+            size=(B, C, F, 1, 1), dtype=torch.float32, device=device
+        )
+        context["latent_mask"] = torch.ones(
+            size=(B, C, F, 1, 1), dtype=torch.float32, device=device
+        )
+
         samples, intermediate_stage_output = diffusion_model.sample(
             num_samples=num_samples, context=context
         )

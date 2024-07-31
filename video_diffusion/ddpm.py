@@ -57,7 +57,9 @@ class GaussianDiffusion_DDPM(DiffusionModel):
 
         self._is_learned_sigma = config.diffusion.score_network.params.is_learned_sigma
         self._is_class_conditional = (
-            config.diffusion.score_network.params.is_class_conditional
+            (config.diffusion.score_network.params.is_class_conditional)
+            if "is_class_conditional" in config.diffusion.score_network.params.to_dict()
+            else False
         )
         self._num_classes = config.data.num_classes
         self._unconditional_guidance_probability = (
@@ -560,6 +562,11 @@ class GaussianDiffusion_DDPM(DiffusionModel):
         batch_size = 4
         device = "cpu"
 
+        B = batch_size
+        C = self._config.data.num_channels
+        F = self._config.data.input_number_of_frames
+        H = W = self._config.data.image_size
+
         summary_context = {
             "timestep": (
                 torch.rand(size=(batch_size,))
@@ -571,6 +578,13 @@ class GaussianDiffusion_DDPM(DiffusionModel):
             "classes": torch.randint(
                 0, self._config.data.num_classes, size=(batch_size,)
             ),
+            "x0": torch.zeros(B, C, F, H, W),
+            "frame_indices": torch.tile(
+                torch.arange(end=F)[None, ...],
+                (B, 1),
+            ),
+            "observed_mask": torch.zeros(size=(B, C, F, 1, 1), dtype=torch.float32),
+            "latent_mask": torch.ones(size=(B, C, F, 1, 1), dtype=torch.float32),
         }
 
         if "super_resolution" in self._config:
