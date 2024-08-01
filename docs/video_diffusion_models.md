@@ -41,7 +41,11 @@ Output will be saved to the `output/moving_mnist/sample/video_diffusion_models` 
 
 ## Results and Checkpoints
 
-The following results were generated using this [commit hash](), after training on a single T4 instance for 100k steps at batch size 8:
+The following results were generated using this [commit hash](https://github.com/swookey-thinky/video_diffusion/commit/fb739d9314a6bce1665d27e4f110c239183df288), after training on a single T4 instance for 100k steps at batch size 8:
+
+| Config | Checkpoint | Results
+| ------ | ---------- | -------
+| [config](https://github.com/swookey-thinky/video_diffusion/blob/main/configs/moving_mnist/video_diffusion_models.yaml) | [google drive](https://drive.google.com/file/d/1gAMyfBjr47sscPGNlzsxAHJegHv-dLrc/view?usp=sharing) | ![Video Diffusion Models](https://drive.google.com/uc?export=view&id=1aYxiwkgdAd6oFpXMwQhDwfiXXYJlDDFG)
 
 ## Other Resources
 

@@ -4,9 +4,13 @@ diffusion:
   # Sampling section determines the size of the sampled output
   # from the model, and defines the sampling method used
   sampling:
+    # Number of output channels
     output_channels: 1
+    # Spatial resolution of the output
     output_spatial_size: 32
+    # Number of frames in the output
     output_frames: 16
+    # The sampler to use.
     target: video_diffusion.samplers.ancestral.AncestralSampler
     params: {}
   # The noise scheduler to use with the forward diffusion process.
@@ -119,6 +123,7 @@ data:
   num_channels: 1
   # The number of classes in the dataset
   num_classes: 10
+  # The number of frames in the video
   input_number_of_frames: 16
 
 # Describes training parameters, including sampling
@@ -127,4 +132,5 @@ training:
   # Use the batch training methodology from Flexible Diffusion Modeling
   # to train a joint conditional model of random frame/conditioning sets.
   flexible_diffusion_modeling: True
-  flexible_diffusion_modeling_method: "uniform"
+  # The masking strategy, can be "random" or "uniform".
+  flexible_diffusion_modeling_method: "random"

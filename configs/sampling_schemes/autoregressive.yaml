@@ -1,0 +1,16 @@
+sampling_scheme:
+  # The sampling scheme to use
+  target: "video_diffusion.samplers.schemes.Autoregressive"
+  params:
+    # The length of the video to generate. Make sure that
+    # (video_length - max_frames) % step_size == 0
+    video_length: 160
+    # The maximum number of frames the model can handle
+    max_frames: 16
+    # Conditioned on the first N frames. 0 implies
+    # it starts of unconditionally, then autoregressive.
+    num_observed_frames: 0
+    # The number of frames to increment at each step. This is the number
+    # of frames generated at each step. The video will be conditioned
+    # on (max_frames - step_size) previous frames.
+    step_size: 8

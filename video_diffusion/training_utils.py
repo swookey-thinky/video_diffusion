@@ -81,7 +81,7 @@ def sample_masks_for_training_batch(
             # Select whether we are adding a latent or observed mask
             mask = obs_row if torch.rand(()) < 0.5 else latent_row
             # Grab some random indices for this mask (latent or observed)
-            indices = torch.tensor(_sample_some_indices(max_indices=N, T=T))
+            indices = torch.tensor(_sample_some_indices(max_indices=N, T=T), device=video_batch.device)
             taken = (obs_row[indices] + latent_row[indices]).view(-1)
             # Remove indices that are already used in a mask
             indices = indices[taken == 0]

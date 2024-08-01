@@ -16,9 +16,10 @@ from typing import List, Optional
 from video_diffusion.datasets.moving_mnist import MovingMNIST
 from video_diffusion.diffusion import DiffusionModel
 from video_diffusion.ddpm import GaussianDiffusion_DDPM
-from video_diffusion.samplers import ddim, ancestral, base
+from video_diffusion.samplers import ddim, ancestral, base, schemes
 from video_diffusion.utils import (
     cycle,
+    instantiate_from_config,
     load_yaml,
     DotConfig,
     normalize_to_neg_one_to_one,
@@ -35,6 +36,7 @@ def sample_model(
     guidance: float,
     checkpoint_path: str,
     sampler: str,
+    sampling_scheme_path: str,
 ):
     global OUTPUT_NAME
     OUTPUT_NAME = f"{OUTPUT_NAME}/{str(Path(config_path).stem)}"
@@ -72,12 +74,21 @@ def sample_model(
     else:
         raise NotImplemented(f"Sampler {sampler} not implemented.")
 
+    # Create the sampling scheme, if we have it
+    sampling_scheme = None
+    if sampling_scheme_path:
+        sampling_scheme_config = load_yaml(sampling_scheme_path)
+        sampling_scheme = instantiate_from_config(
+            sampling_scheme_config.sampling_scheme.to_dict()
+        )
+
     # Save and sample the final step.
     sample(
         diffusion_model=diffusion_model,
         config=config,
         num_samples=num_samples,
         sampler=sampler,
+        sampling_scheme=sampling_scheme,
     )
 
 
@@ -86,6 +97,7 @@ def sample(
     config: DotConfig,
     sampler: base.ReverseProcessSampler,
     num_samples: int = 64,
+    sampling_scheme: Optional[schemes.SamplingSchemeBase] = None,
 ):
     device = next(diffusion_model.parameters()).device
 
@@ -101,11 +113,83 @@ def sample(
     context["text_prompts"] = prompts
     context["classes"] = classes
 
-    samples, intermediate_stage_output = diffusion_model.sample(
-        num_samples=num_samples,
-        context=context,
-        sampler=sampler,
-    )
+    if sampling_scheme is not None:
+        # Starts unconditionally
+        assert sampling_scheme.num_observations == 0
+        frame_indices_iterator = iter(sampling_scheme)
+
+        # Unconditional conditioning for the first step. Note that
+        # this is (B, T, C, H, W), not the normal channels first.
+        samples = torch.zeros(
+            size=(
+                num_samples,
+                sampling_scheme.video_length,
+                config.data.num_channels,
+                config.data.image_size,
+                config.data.image_size,
+            ),
+        )
+        step = 0
+        while True:
+            # ignored for non-adaptive sampling schemes
+            frame_indices_iterator.set_videos(samples.to(device))
+            try:
+                obs_frame_indices, latent_frame_indices = next(frame_indices_iterator)
+            except StopIteration:
+                break
+
+            frame_indices = torch.cat(
+                [torch.tensor(obs_frame_indices), torch.tensor(latent_frame_indices)],
+                dim=1,
+            ).long()
+            x0 = torch.stack(
+                [samples[i, fi] for i, fi in enumerate(frame_indices)], dim=0
+            ).clone()
+            obs_mask = (
+                torch.cat(
+                    [
+                        torch.ones_like(torch.tensor(obs_frame_indices)),
+                        torch.zeros_like(torch.tensor(latent_frame_indices)),
+                    ],
+                    dim=1,
+                )
+                .view(num_samples, -1, 1, 1, 1)
+                .float()
+            )
+            latent_mask = 1 - obs_mask
+
+            # Move tensors to the correct device
+            x0, observed_mask, latent_mask, frame_indices = (
+                t.to(device) for t in [x0, obs_mask, latent_mask, frame_indices]
+            )
+
+            # Run the network. Ensure everything is still channels first
+            context["x0"] = normalize_to_neg_one_to_one(x0.permute(0, 2, 1, 3, 4))
+            context["frame_indices"] = frame_indices
+            context["observed_mask"] = observed_mask.permute(0, 2, 1, 3, 4)
+            context["latent_mask"] = latent_mask.permute(0, 2, 1, 3, 4)
+
+            local_samples, _ = diffusion_model.sample(
+                num_samples=num_samples, context=context, sampler=sampler
+            )
+            local_samples = local_samples.permute(0, 2, 1, 3, 4)
+            for i, li in enumerate(latent_frame_indices):
+                samples[i, li] = local_samples[i, -len(li) :].cpu()
+
+            video_tensor_to_gif(
+                samples.permute(0, 2, 1, 3, 4),
+                str(f"{OUTPUT_NAME}/sample_step_{step}.gif"),
+            )
+            step += 1
+
+        # Make samples channels first again
+        samples = samples.permute(0, 2, 1, 3, 4)
+    else:
+        samples, _ = diffusion_model.sample(
+            num_samples=num_samples,
+            context=context,
+            sampler=sampler,
+        )
 
     # Save the first frame
     utils.save_image(
@@ -168,6 +252,7 @@ def main(override=None):
     parser.add_argument("--guidance", type=float, default=1.0)
     parser.add_argument("--checkpoint", type=str, default="")
     parser.add_argument("--sampler", type=str, default="ancestral")
+    parser.add_argument("--sampling_scheme_path", type=str, default="")
     args = parser.parse_args()
 
     sample_model(
@@ -176,6 +261,7 @@ def main(override=None):
         guidance=args.guidance,
         checkpoint_path=args.checkpoint,
         sampler=args.sampler,
+        sampling_scheme_path=args.sampling_scheme_path,
     )
 
 
